@@ -1,2 +1,3 @@
 # echoserver
-Echo server in rust
+
+echoserver written in rust with actix-web library

@@ -1,0 +1,117 @@
+replicaCount: 1
+
+image:
+  repository: k3d-registry.localhost:5000/echorust
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "echorust"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  hosts:
+    - host: echo.lvh.me
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+application:
+  port: 8890
+
+env:
+  TZ: "Europe/Rome"
+  JAEGER_SERVICE_NAME: "echoupstream"
+  JAEGER_AGENT_HOST: "jaeger-agent.monitoring.svc.cluster.local"
+  JAEGER_AGENT_PORT: "6831"
+  JAEGER_SAMPLER_TYPE: "probabilistic"
+  JAEGER_SAMPLER_PARAM: "1.0"
+  JAEGER_REPORTER_LOG_SPANS: "false"
+
+observability:
+  port: 2112 
+  readtimeout: 1m
+  writetimeout: 1m
+  datadog:
+    enabled: false
+  prometheus:
+    enabled: true
+    scrapePort: #Port for prometheus scraping. If not specified observability.port will be used
+    scrapePath: #Path for prometheus scraping. If not specified observability.metrics.path will be used
+  grafana:
+    enabled: false
+  metrics:
+    path: /metrics
+  probes:
+    liveness:
+      enabled: true
+      httpGet:
+        path: /liveness
+        port: 8890
+        scheme: HTTP
+      initialDelaySeconds: 2
+      periodSeconds: 30
+      successThreshold: 1
+      failureThreshold: 3
+      timeoutSeconds: 1
+
+    readiness:
+      enabled: true
+      httpGet:
+        path: /readiness
+        port: 8890
+        scheme: HTTP
+      initialDelaySeconds: 2
+      periodSeconds: 30
+      successThreshold: 1
+      failureThreshold: 3
+      timeoutSeconds: 1
+
+tracing:
+  collectorURL: jaeger-collector.monitoraggio.svc:14267
+  sidecar:
+    enabled: false # enable tracing sidecar. If true, env.JAEGER_AGENT_* needs to be set correctly
+    image:
+      imageName: jaegertracing/jaeger-agent
+      pullPolicy: IfNotPresent
+      tag: 1.13
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi

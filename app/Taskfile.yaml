@@ -1,0 +1,98 @@
+version: '3'
+
+vars:
+  REGISTRY: k3d-registry.localhost:5000
+  IMAGE: echorust:latest
+  EXT_PORT: 9080
+  NAMESPACE: spid
+  APP_NAME: echorust
+  HELM_OPTIONS: ""
+  CARGO_BIN:
+    sh: which cargo
+  JAEGER_CONTAINER_NAME: jaeger-container
+
+tasks:
+  install-requirements:
+    desc: "Install all tools needed to run Rust code"
+    cmds:
+      - curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+      - source "{{.HOME_DIR}}/.profile"
+      - rustup update
+      - rustup component add rustfmt
+      - rustup component add clippy
+  
+  fmt:
+    desc: "Format source code"
+    cmds: 
+      - "{{.CARGO_BIN}} fmt"
+
+  lint:
+    desc: "Lint code"
+    cmds: 
+      - "{{.CARGO_BIN}} clippy"
+
+  build:
+    desc: "Compiles source code"
+    cmds:
+      # below line is unuseful (so commented), because Rust knows what kind of files it has to rebuild,
+      # therefore if we delete the 'target' dir, Rust can't use cache and make build always start from 0
+      # - rm -rf ./target
+      - "{{.CARGO_BIN}} build --release"
+
+  run:
+    desc: "Starts the app"
+    env:
+      CONFIG_PATH: ./config
+    cmds:
+      # - |-
+      #   if [ "$( docker container inspect -f '{{.State.Status}}' {{.JAEGER_CONTAINER_NAME}} )" = "running" ]; then
+      #     echo "Container {{.JAEGER_CONTAINER_NAME}} is already running."
+      #   else
+      #     docker start jaeger-container
+      #   fi
+      - ./target/release/app
+    deps:
+      - build
+
+  image:
+    desc: "Compiles docker image"
+    cmds:
+      - docker build -t {{.REGISTRY}}/{{.IMAGE}} -f Dockerfile .
+
+  push:
+    desc: "Build and push docker image"
+    cmds:
+      - docker push {{.REGISTRY}}/{{.IMAGE}}
+    deps:
+      - image
+
+  run-docker:
+    cmds:
+      - docker run --rm -p {{.EXT_PORT}}:8080 {{.REGISTRY}}/{{.IMAGE}}
+    deps:
+      - image
+
+  deploy-k3d:
+    cmds:
+      - cmd: helm install {{.APP_NAME}} -n {{.NAMESPACE}} ./chart
+    deps:
+      - create-namespace
+
+  undeploy-k3d:
+    cmds:
+      - cmd: helm uninstall -n {{.NAMESPACE}} {{.APP_NAME}}
+        ignore_error: true
+
+  create-namespace:
+    cmds:
+      - cmd: kubectl create ns {{.NAMESPACE}}
+        ignore_error: true
+
+  run-k3d:
+    desc: "Run the app on a k3d cluster. The namespace will be created if missing"
+    cmds:
+      - cmd: helm install {{.APP_NAME}} -n {{.NAMESPACE}} ./chart {{.HELM_OPTIONS}}
+    deps:
+      - undeploy-k3d
+      - push
+      - create-namespace
